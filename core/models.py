@@ -38,6 +38,14 @@ class TenderAnalysisReport(BaseModel):
     required_documents: List[str] = Field(default_factory=list)
     eligibility_breakdown: List[EligibilityItem] = Field(default_factory=list)
 
+class DiffItem(BaseModel):
+    parameter: str
+    original_value: str
+    amended_value: str
+    delta_summary: str
+    severity: str = "Moderate"
+    action_required: str = ""
+
 class Corrigendum(BaseModel):
     corrigendum_id: str
     tender_id: str
@@ -45,6 +53,10 @@ class Corrigendum(BaseModel):
     description: str
     amended_fields: List[str] = Field(default_factory=list)
     document_url: Optional[str] = None
+    diff_items: List[DiffItem] = Field(default_factory=list)
+    qualification_impact: str = ""
+    old_score: Optional[int] = None
+    new_score: Optional[int] = None
 
 class TenderRecord(BaseModel):
     id: str = Field(..., description="Unique Tender/Bid Number")

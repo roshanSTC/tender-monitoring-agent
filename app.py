@@ -15,6 +15,7 @@ from core.logger import get_agent_logger, ScrapingAuditLogger
 from core.export_engine import ExportEngine
 from core.bid_pack_generator import BidPackGenerator
 from core.watchdog import AutonomousWatchdogService
+from core.diff_engine import CorrigendumDiffEngine
 
 logger = get_agent_logger("Dashboard")
 watchdog = AutonomousWatchdogService.get_instance()
@@ -74,6 +75,7 @@ if "db" not in st.session_state:
 
 db: TenderDatabase = st.session_state.db
 analyzer = TenderAnalyzer()
+diff_engine = CorrigendumDiffEngine(analyzer=analyzer)
 
 with st.sidebar:
     st.title("🛡️ TenderPulse Agent")
@@ -468,20 +470,157 @@ elif selected_view == "💼 Bid Pipeline & Corrigendums":
                     st.rerun()
             st.markdown("---")
 
-    st.subheader("📢 Corrigendum Watchdog Feed")
+    st.subheader("📢 Corrigendum Watchdog Feed & Live Impact Diff")
+    st.write("Tracks all addendums, date extensions, and specification amendments with automated differential analysis.")
+
+    all_tenders_list = db.get_all_tenders()
     corrigendum_items = []
-    for t in db.get_all_tenders():
+    for t in all_tenders_list:
         for c in t.corrigendums:
             c_dict = c if isinstance(c, dict) else c.model_dump()
             corrigendum_items.append((t, c_dict))
 
     if corrigendum_items:
-        for t, c in corrigendum_items:
-            st.warning(f"**{t.title}** ({t.id})\n\n"
-                       f"📅 Published: `{c.get('published_date')}` | Ref: `{c.get('corrigendum_id')}`\n\n"
-                       f"👉 {c.get('description')}")
+        for t, c_dict in corrigendum_items:
+            corr_id = c_dict.get('corrigendum_id', 'CORR')
+            pub_date = c_dict.get('published_date', 'N/A')
+            impact = c_dict.get('qualification_impact', 'Terms amended')
+            diff_list = c_dict.get('diff_items', [])
+
+            with st.expander(f"⚠️ **[{corr_id}]** {t.title} — *{t.organization}* | Published: `{pub_date}`", expanded=True):
+                c_head1, c_head2 = st.columns([3, 1])
+                with c_head1:
+                    st.write(f"**Tender Ref ID:** `{t.id}` | **Issuing Authority:** {t.organization}")
+                    st.write(f"**Current Radar Due Date:** `{t.due_date}`")
+                with c_head2:
+                    st.info(f"⚡ **Impact:** {impact}")
+
+                if diff_list:
+                    st.markdown("#### 🔍 Structured Differential Analysis (Side-by-Side):")
+                    diff_rows = []
+                    for di in diff_list:
+                        d_dict = di if isinstance(di, dict) else di.model_dump()
+                        diff_rows.append({
+                            "Parameter": d_dict.get("parameter"),
+                            "🔴 Original NIT (v1.0)": d_dict.get("original_value"),
+                            "🟢 Amended Terms (v1.1)": d_dict.get("amended_value"),
+                            "⚡ Delta / Impact": d_dict.get("delta_summary"),
+                            "Severity": d_dict.get("severity"),
+                            "Action Required": d_dict.get("action_required")
+                        })
+                    st.dataframe(pd.DataFrame(diff_rows), use_container_width=True, hide_index=True)
+                else:
+                    st.markdown(f"**Description:** {c_dict.get('description')}")
+
+                if c_dict.get("document_url"):
+                    st.markdown(f"🔗 [Download Official Corrigendum Document PDF]({c_dict.get('document_url')})")
     else:
-        st.write("No active corrigendums recorded.")
+        st.info("No active corrigendums recorded in system.")
+
+    st.markdown("---")
+
+    # 2. Interactive Corrigendum Auto-Diff Tool
+    st.subheader("🔍 Run Corrigendum Auto-Diff on Any Tender")
+    st.write("Compare any newly published amendment notice against an active tender to automatically extract dates, financial deltas, and recalculate match scores.")
+
+    target_tender_options = {f"[{t.id[:30]}] {t.title[:60]}... ({t.organization})": t for t in all_tenders_list}
+    if not target_tender_options:
+        st.info("No monitored tenders available in database.")
+    else:
+        selected_tender_label = st.selectbox("Select Target Monitored Tender:", list(target_tender_options.keys()))
+        selected_tender = target_tender_options[selected_tender_label]
+
+        tab_paste, tab_pdf = st.tabs(["📝 Paste Corrigendum Notice Text", "📄 Upload Corrigendum PDF"])
+
+        corr_input_text = ""
+        with tab_paste:
+            corr_input_text = st.text_area(
+                "Paste Corrigendum Text / Notice Clauses:",
+                height=150,
+                placeholder="Example:\nCORRIGENDUM NO. 01\n1. The closing date for submission of bids is hereby extended to 30.11.2026.\n2. EMD waiver for MSME / Udyam registered bidders is approved.\n3. PBG reduced to 3% of contract value.\n4. Read 'Dry Offset Platemaking Machine with 2400 DPI' instead of 'Platemaking Machine with 1200 DPI'."
+            )
+
+        with tab_pdf:
+            uploaded_corr_pdf = st.file_uploader("Upload Corrigendum PDF Document:", type=["pdf"], key="corr_pdf_uploader")
+            if uploaded_corr_pdf:
+                c_temp_path = TENDERS_DIR / uploaded_corr_pdf.name
+                with open(c_temp_path, "wb") as f:
+                    f.write(uploaded_corr_pdf.getbuffer())
+                corr_input_text = DocumentParser.extract_text_from_pdf(str(c_temp_path))
+                st.success(f"Extracted {len(corr_input_text)} characters from `{uploaded_corr_pdf.name}`")
+
+        c_col1, c_col2 = st.columns([1.5, 2.5])
+        with c_col1:
+            corr_ref_no = st.text_input("Corrigendum Reference / Number", value="CORR-01")
+        with c_col2:
+            corr_pub_date = st.date_input("Corrigendum Publication Date", value=datetime.now()).strftime("%Y-%m-%d")
+
+        if st.button("🚀 Analyze & Generate Auto-Diff Impact Matrix", key="btn_run_diff"):
+            if not corr_input_text.strip():
+                st.warning("Please paste corrigendum text or upload a corrigendum PDF.")
+            else:
+                with st.spinner("Analyzing text and running differential extraction..."):
+                    corr_result = diff_engine.compare(
+                        tender=selected_tender,
+                        corrigendum_text=corr_input_text,
+                        corrigendum_id=corr_ref_no,
+                        published_date=corr_pub_date
+                    )
+                    st.session_state["latest_diff_result"] = (selected_tender, corr_result)
+
+        if "latest_diff_result" in st.session_state:
+            target_t, c_res = st.session_state["latest_diff_result"]
+            st.markdown("### 📊 Auto-Diff Comparison & Impact Matrix")
+
+            m_col1, m_col2, m_col3 = st.columns(3)
+            with m_col1:
+                st.metric("Detected Amended Fields", f"{len(c_res.amended_fields)}")
+            with m_col2:
+                old_s = c_res.old_score or target_t.match_score
+                new_s = c_res.new_score or target_t.match_score
+                delta_s = new_s - old_s
+                st.metric("Score Impact", f"{new_s}%", delta=f"{delta_s:+d}%" if delta_s != 0 else "Unchanged")
+            with m_col3:
+                st.metric("Qualification Impact", "Qualified" if new_s >= 75 else "Review Needed")
+
+            st.info(f"⚡ **Evaluation Summary:** {c_res.qualification_impact}")
+
+            diff_display_rows = []
+            for di in c_res.diff_items:
+                d_dict = di if isinstance(di, dict) else di.model_dump()
+                diff_display_rows.append({
+                    "Parameter": d_dict.get("parameter"),
+                    "🔴 Original NIT (v1.0)": d_dict.get("original_value"),
+                    "🟢 Amended Terms (v1.1)": d_dict.get("amended_value"),
+                    "⚡ Delta / Impact": d_dict.get("delta_summary"),
+                    "Severity": d_dict.get("severity"),
+                    "Action Required": d_dict.get("action_required")
+                })
+
+            st.dataframe(pd.DataFrame(diff_display_rows), use_container_width=True, hide_index=True)
+
+            if st.button("💾 Apply Amendment & Update Live Tender Radar", key="btn_apply_corr"):
+                for di in c_res.diff_items:
+                    if di.parameter == "Submission Due Date":
+                        target_t.due_date = di.amended_value
+
+                if c_res.new_score:
+                    target_t.match_score = c_res.new_score
+                    target_t.status = BidDecisionStatus.HIGH_MATCH if c_res.new_score >= 75 else BidDecisionStatus.REVIEW_NEEDED
+
+                existing_corrs = [c for c in target_t.corrigendums if (c.corrigendum_id if hasattr(c, 'corrigendum_id') else c.get('corrigendum_id')) != c_res.corrigendum_id]
+                existing_corrs.append(c_res)
+                target_t.corrigendums = existing_corrs
+
+                db.save_tender(target_t)
+
+                email_cfg = EmailNotifier.load_config()
+                if email_cfg.get("enabled") and email_cfg.get("notify_on_corrigendum"):
+                    EmailNotifier.send_corrigendum_alert(target_t, c_res)
+
+                st.success(f"Successfully applied amendment [{c_res.corrigendum_id}] to [{target_t.id}]! Tender Radar and Due Dates updated.")
+                del st.session_state["latest_diff_result"]
+                st.rerun()
 
 elif selected_view == "🔔 Email Alerts & Autonomous Watchdog":
     st.subheader("🔔 Autonomous Watchdog & Instant Email Alert Pipeline")

@@ -136,15 +136,35 @@ class AutonomousWatchdogService:
                     # Check for new corrigendums on existing tenders
                     existing = existing_tenders[t.id]
                     if len(t.corrigendums) > len(existing.corrigendums):
-                        new_corrigendums = t.corrigendums[len(existing.corrigendums):]
-                        existing.corrigendums = t.corrigendums
-                        db.save_tender(existing)
+                        from core.diff_engine import CorrigendumDiffEngine
+                        diff_engine = CorrigendumDiffEngine()
+                        new_raw_corrs = t.corrigendums[len(existing.corrigendums):]
+                        enriched_corrs = []
 
-                        if email_enabled and notify_corrigendum:
-                            for c in new_corrigendums:
-                                EmailNotifier.send_corrigendum_alert(existing, c)
+                        for raw_c in new_raw_corrs:
+                            c_dict = raw_c if isinstance(raw_c, dict) else raw_c.model_dump()
+                            enriched_corr = diff_engine.compare(
+                                tender=existing,
+                                corrigendum_text=c_dict.get("description", ""),
+                                corrigendum_id=c_dict.get("corrigendum_id", "CORR-01"),
+                                published_date=c_dict.get("published_date"),
+                                doc_url=c_dict.get("document_url")
+                            )
+                            # Update due date if extended
+                            for di in enriched_corr.diff_items:
+                                if di.parameter == "Submission Due Date":
+                                    existing.due_date = di.amended_value
+                            if enriched_corr.new_score:
+                                existing.match_score = enriched_corr.new_score
+                            enriched_corrs.append(enriched_corr)
+
+                            if email_enabled and notify_corrigendum:
+                                EmailNotifier.send_corrigendum_alert(existing, enriched_corr)
                                 alerts_this_cycle += 1
                                 self.alerts_dispatched += 1
+
+                        existing.corrigendums.extend(enriched_corrs)
+                        db.save_tender(existing)
 
             self.last_status_message = f"Cycle #{self.total_cycles} complete at {datetime.now().strftime('%H:%M:%S')} (New Bids: {discovered_this_cycle}, Alerts: {alerts_this_cycle})"
             logger.info(self.last_status_message)

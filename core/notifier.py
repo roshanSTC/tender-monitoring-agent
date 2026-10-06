@@ -278,10 +278,35 @@ class EmailNotifier:
         """
         subject = f"⚠️ [CORRIGENDUM ISSUED] {tender.organization} - Ref: {tender.id[:40]}"
 
+        # Build side-by-side diff table if available
+        diff_table_html = ""
+        if corrigendum.diff_items:
+            diff_table_html = """
+            <h4 style="margin: 20px 0 8px; color: #1e293b;">🔍 Side-by-Side Differential Matrix:</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">
+                <tr style="background: #f1f5f9; text-align: left;">
+                    <th style="padding: 6px; border: 1px solid #e2e8f0;">Parameter</th>
+                    <th style="padding: 6px; border: 1px solid #e2e8f0;">Original NIT</th>
+                    <th style="padding: 6px; border: 1px solid #e2e8f0;">Amended Term</th>
+                    <th style="padding: 6px; border: 1px solid #e2e8f0;">Delta / Impact</th>
+                </tr>
+            """
+            for di in corrigendum.diff_items:
+                d_dict = di if isinstance(di, dict) else di.model_dump()
+                diff_table_html += f"""
+                <tr>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0;"><strong>{d_dict.get('parameter')}</strong></td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0; color: #dc2626;">{d_dict.get('original_value')}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0; color: #16a34a;"><strong>{d_dict.get('amended_value')}</strong></td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0;">{d_dict.get('delta_summary')}</td>
+                </tr>
+                """
+            diff_table_html += "</table>"
+
         html_body = f"""
         <html>
         <body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8fafc; padding: 20px; color: #1e293b;">
-            <div style="max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden;">
+            <div style="max-width: 650px; margin: auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden;">
                 <div style="background-color: #b91c1c; padding: 20px; text-align: center; color: #ffffff;">
                     <h2 style="margin: 0; font-size: 20px;">⚠️ Critical Corrigendum / Addendum Published</h2>
                     <p style="margin: 5px 0 0; color: #fecaca; font-size: 13px;">Immediate review recommended for active tender</p>
@@ -293,12 +318,15 @@ class EmailNotifier:
                         <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;"><strong>Authority:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">{tender.organization}</td></tr>
                         <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;"><strong>Published Date:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">{corrigendum.published_date}</td></tr>
                         <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;"><strong>Amended Elements:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #dc2626;"><strong>{', '.join(corrigendum.amended_fields) if corrigendum.amended_fields else 'Terms & Dates'}</strong></td></tr>
+                        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;"><strong>Impact Verdict:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #16a34a;"><strong>{corrigendum.qualification_impact or 'Terms amended'}</strong></td></tr>
                     </table>
                     
                     <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 14px; margin-top: 20px; border-radius: 4px; font-size: 13.5px;">
                         <strong>Corrigendum Description:</strong><br>
                         {corrigendum.description}
                     </div>
+
+                    {diff_table_html}
 
                     <div style="margin-top: 25px; text-align: center;">
                         <a href="{corrigendum.document_url or tender.doc_url or '#'}" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-size: 13px;">
