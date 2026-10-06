@@ -1,0 +1,130 @@
+[
+  {
+    "id": "gem",
+    "name": "GeM (Government e-Marketplace)",
+    "url": "https://gem.gov.in",
+    "bids_url": "https://gem.gov.in/all-bids",
+    "category": "Central Government",
+    "enabled": true
+  },
+  {
+    "id": "cppp",
+    "name": "CPPP (eProcure Central Portal)",
+    "url": "https://eprocure.gov.in/eprocure/app",
+    "bids_url": "https://eprocure.gov.in/eprocure/app?page=FrontEndTendersByOrganisation&service=page",
+    "category": "Central Government",
+    "enabled": true
+  },
+  {
+    "id": "ireps",
+    "name": "Indian Railways (IREPS)",
+    "url": "https://www.ireps.gov.in",
+    "bids_url": "https://www.ireps.gov.in/epsn/jsp/searchTender.jsp",
+    "category": "Railways & Transport",
+    "enabled": true
+  },
+  {
+    "id": "defproc",
+    "name": "Defence e-Procurement Portal",
+    "url": "https://defproc.gov.in/nicgep/app",
+    "bids_url": "https://defproc.gov.in/nicgep/app?page=FrontEndTendersByOrganisation&service=page",
+    "category": "Defence & Security",
+    "enabled": true
+  },
+  {
+    "id": "mahatenders",
+    "name": "MahaTenders (Govt of Maharashtra)",
+    "url": "https://mahatenders.gov.in/nicgep/app",
+    "bids_url": "https://mahatenders.gov.in/nicgep/app?page=FrontEndTendersByOrganisation&service=page",
+    "category": "State Government",
+    "enabled": true
+  },
+  {
+    "id": "isro_eproc",
+    "name": "ISRO Space Procurement Hub",
+    "url": "https://isro.eproc.gov.in",
+    "bids_url": "https://isro.eproc.gov.in/tenders",
+    "category": "Space & Research",
+    "enabled": true
+  },
+  {
+    "id": "spmcil",
+    "name": "SPMCIL",
+    "url": "https://www.spmcil.com/en/tenders/",
+    "bids_url": "https://www.spmcil.com/en/tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "igm_mumbai",
+    "name": "IGM MUMBAI",
+    "url": "https://igmmumbai.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://igmmumbai.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "igm_kolkata",
+    "name": "IGM KOLKATA",
+    "url": "https://igmkolkata.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://igmkolkata.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "igm_hyderabad",
+    "name": "IGM HYDERABAD",
+    "url": "https://igmhyderabad.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://igmhyderabad.spmcil.com/en/latest-tenders/",
+    "category": "Central Government",
+    "enabled": true
+  },
+  {
+    "id": "igm_noida",
+    "name": "IGM NOIDA",
+    "url": "https://igmnoida.spmcil.com/en/latest-tender/",
+    "bids_url": "https://igmnoida.spmcil.com/en/latest-tender/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "cnp_nashik",
+    "name": "CNP NASHIK",
+    "url": "https://cnpnashik.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://cnpnashik.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "bnp_dewas",
+    "name": "BNP DEWAS",
+    "url": "https://bnpdewas.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://bnpdewas.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "isp_nashik",
+    "name": "ISP NASHIK",
+    "url": "https://ispnasik.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://ispnasik.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "spp_hyderabad",
+    "name": "SPP HYDERABAD",
+    "url": "https://spphyderabad.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://spphyderabad.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  },
+  {
+    "id": "spm_narmadapuram",
+    "name": "SPM NARMADAPURAM",
+    "url": "https://spmnarmadapuram.spmcil.com/en/latest-tenders/",
+    "bids_url": "https://spmnarmadapuram.spmcil.com/en/latest-tenders/",
+    "category": "International / Global",
+    "enabled": true
+  }
+]

@@ -1,3 +1,4 @@
+import core.win_patch  # Suppress harmless Windows socket WinError 10054
 import streamlit as st
 import os
 import json
@@ -11,6 +12,8 @@ from core.document_parser import DocumentParser
 from core.notifier import TenderNotifier
 from core.models import TenderRecord, BidDecisionStatus, TenderSource
 from core.logger import get_agent_logger, ScrapingAuditLogger
+from core.export_engine import ExportEngine
+from core.bid_pack_generator import BidPackGenerator
 
 logger = get_agent_logger("Dashboard")
 
@@ -72,7 +75,21 @@ analyzer = TenderAnalyzer()
 
 with st.sidebar:
     st.title("🛡️ TenderPulse Agent")
-    st.caption("AI-Powered Procurement Intelligence for GeM & CPPP")
+    st.caption("AI-Powered Procurement Intelligence for GeM, CPPP & SPMCIL")
+    st.markdown("---")
+
+    st.subheader("🧭 Screen Navigation")
+    selected_view = st.radio(
+        "Select Screen:",
+        [
+            "📡 Live Tender Radar",
+            "📄 Upload & Analyze Custom PDF",
+            "💼 Bid Pipeline & Corrigendums",
+            "⚙️ Company Profile Config",
+            "📋 Live Scraping Logs & Audit Trail"
+        ],
+        index=0
+    )
     st.markdown("---")
 
     try:
@@ -90,15 +107,15 @@ with st.sidebar:
     st.subheader("🌐 Monitored Portals")
     st.markdown("✅ **GeM** (Government e-Marketplace)")
     st.markdown("✅ **CPPP** (Central Public Procurement Portal)")
-    st.markdown("✅ **State eProcurement Hubs**")
+    st.markdown("✅ **SPMCIL Mints & Presses (All 9 Units)**")
 
     st.markdown("---")
-    if st.button("🔄 Refresh & Sync Live Feeds", use_container_width=True):
+    if st.button("🔄 Refresh & Sync Live Feeds", width="stretch"):
         scraper = IndianTenderScraper(analyzer=analyzer)
         new_items = scraper.fetch_curated_indian_tenders()
         for item in new_items:
             db.save_tender(item)
-        st.toast("Synchronized live tenders from GeM & CPPP!", icon="✅")
+        st.toast("Synchronized live tenders across all portals!", icon="✅")
         st.rerun()
 
 stats = db.get_stats()
@@ -116,24 +133,20 @@ with col4:
 
 st.markdown("---")
 
-tab_radar, tab_upload, tab_pipeline, tab_profile, tab_logs = st.tabs([
-    "📡 Live Tender Radar",
-    "📄 Upload & Analyze Custom PDF",
-    "💼 Bid Pipeline & Corrigendums",
-    "⚙️ Company Profile Config",
-    "📋 Live Scraping Logs & Audit Trail"
-])
-
-with tab_radar:
-    f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 2])
+# ----------------- SCREEN ROUTING -----------------
+if selected_view == "📡 Live Tender Radar":
+    f_col1, f_col2, f_col3, f_col4 = st.columns([1.2, 1.4, 1.5, 2.0])
+    all_tenders = db.get_all_tenders()
+    distinct_portals = sorted(list(set(t.portal.value if hasattr(t.portal, 'value') else str(t.portal) for t in all_tenders)))
+    
     with f_col1:
-        portal_filter = st.selectbox("Portal Filter", ["All Portals", "GeM (Gov e-Marketplace)", "CPPP (eProcure)"])
+        portal_filter = st.selectbox("Portal Filter", ["All Portals"] + distinct_portals)
     with f_col2:
         status_filter = st.selectbox("Match Status", ["All Statuses", "High Match (Qualified)", "Review Needed", "Disqualified", "Pursuing Bid"])
     with f_col3:
+        sort_by = st.selectbox("Sort Order", ["Match Score (Highest First)", "Due Date (Earliest First)", "Due Date (Latest First)"])
+    with f_col4:
         search_query = st.text_input("🔍 Search keyword, department or tender ID", "")
-
-    all_tenders = db.get_all_tenders()
 
     filtered_tenders = []
     for t in all_tenders:
@@ -145,17 +158,54 @@ with tab_radar:
         if status_filter != "All Statuses" and status_str != status_filter:
             continue
         if search_query:
-            q = search_query.lower()
-            if q not in t.title.lower() and q not in t.organization.lower() and q not in t.id.lower():
+            terms = search_query.strip().lower().split()
+            haystack = f"{t.title} {t.organization} {t.id} {t.category}".lower()
+            if not all(term in haystack for term in terms):
                 continue
         filtered_tenders.append(t)
 
-    st.write(f"Showing **{len(filtered_tenders)}** tenders matching criteria:")
+    # Sort filtered results
+    if sort_by == "Match Score (Highest First)":
+        filtered_tenders.sort(key=lambda x: (x.match_score, x.due_date), reverse=True)
+    elif sort_by == "Due Date (Earliest First)":
+        filtered_tenders.sort(key=lambda x: x.due_date)
+    elif sort_by == "Due Date (Latest First)":
+        filtered_tenders.sort(key=lambda x: x.due_date, reverse=True)
 
     if not filtered_tenders:
         st.info("No tenders match the specified filter.")
     else:
-        for tender in filtered_tenders:
+        page_size = 15
+        total_pages = max(1, (len(filtered_tenders) + page_size - 1) // page_size)
+        
+        pag_col1, pag_col2, pag_col3, pag_col4 = st.columns([1.2, 3.2, 1.4, 1.4])
+        with pag_col1:
+            page_num = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
+        with pag_col2:
+            st.caption(f"Showing page **{page_num} of {total_pages}** ({len(filtered_tenders)} matching bids)")
+        with pag_col3:
+            excel_bytes = ExportEngine.generate_excel(filtered_tenders)
+            st.download_button(
+                label="📊 Export Excel",
+                data=excel_bytes,
+                file_name=f"Tender_Radar_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        with pag_col4:
+            csv_str = ExportEngine.generate_csv(filtered_tenders)
+            st.download_button(
+                label="📄 Export CSV",
+                data=csv_str,
+                file_name=f"Tender_Radar_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+        start_idx = (page_num - 1) * page_size
+        page_tenders = filtered_tenders[start_idx : start_idx + page_size]
+
+        for tender in page_tenders:
             score = tender.match_score
             val_cr = (tender.estimated_value_inr / 10000000.0) if tender.estimated_value_inr else 0.0
             emd_lakh = (tender.emd_amount_inr / 100000.0) if tender.emd_amount_inr else 0.0
@@ -168,6 +218,12 @@ with tab_radar:
                 t_col2.write(f"**Portal:** {portal_val}")
                 t_col3.write(f"**Value:** ₹{val_cr:.2f} Cr" if val_cr > 0 else "**Value:** Unspecified")
                 t_col4.write(f"**EMD:** ₹{emd_lakh:.2f} Lakhs" if emd_lakh > 0 else "**EMD:** Exempted")
+
+                if tender.doc_path:
+                    import os
+                    st.caption(f"📁 **Attached Document:** `{os.path.basename(tender.doc_path)}`")
+                elif tender.doc_url:
+                    st.caption(f"🔗 [Download Original Tender PDF]({tender.doc_url})")
 
                 badge_class = "badge-qualified" if score >= 75 else ("badge-review" if score >= 50 else "badge-disqualified")
                 st.markdown(f"**Qualification Status:** <span class='{badge_class}'>{status_val}</span>", unsafe_allow_html=True)
@@ -227,7 +283,54 @@ with tab_radar:
                         st.code(alert_text, language="markdown")
                         st.toast("Dispatched webhook payload!", icon="📨")
 
-with tab_upload:
+                # Bid Submission Pack Generator Section
+                with st.expander("🗂️ Generate Bid Submission Pack (Cover Letter, Annexures, Checklists)", expanded=False):
+                    profile_data = {}
+                    try:
+                        with open(COMPANY_PROFILE_PATH, "r", encoding="utf-8") as pf:
+                            profile_data = json.load(pf)
+                    except Exception:
+                        pass
+
+                    safe_id = "".join(c for c in tender.id if c.isalnum() or c in ("-", "_"))[:25]
+                    pack_col1, pack_col2 = st.columns([2.5, 1.5])
+                    with pack_col1:
+                        st.caption("Auto-generated submission pack aligned with Indian Public Procurement & SPMCIL guidelines.")
+                    with pack_col2:
+                        zip_data = BidPackGenerator.create_bid_pack_zip(tender, profile_data)
+                        st.download_button(
+                            label="📦 Download Complete Pack (.ZIP)",
+                            data=zip_data,
+                            file_name=f"Bid_Pack_{safe_id}.zip",
+                            mime="application/zip",
+                            key=f"zip_dl_{tender.id}",
+                            use_container_width=True
+                        )
+
+                    tab_cov, tab_prof, tab_blk, tab_chk = st.tabs([
+                        "📄 Cover Letter",
+                        "📋 Bidder Profile Annexure",
+                        "⚖️ Non-Blacklisting Undertaking",
+                        "✅ Compliance Checklist"
+                    ])
+                    with tab_cov:
+                        cov_txt = BidPackGenerator.generate_cover_letter(tender, profile_data)
+                        st.markdown(cov_txt)
+                        st.download_button("💾 Download Cover Letter (.md)", cov_txt, file_name=f"Cover_Letter_{safe_id}.md", key=f"cov_dl_{tender.id}")
+                    with tab_prof:
+                        prof_txt = BidPackGenerator.generate_bidder_profile(tender, profile_data)
+                        st.markdown(prof_txt)
+                        st.download_button("💾 Download Bidder Profile (.md)", prof_txt, file_name=f"Bidder_Profile_{safe_id}.md", key=f"prof_dl_{tender.id}")
+                    with tab_blk:
+                        blk_txt = BidPackGenerator.generate_non_blacklisting_undertaking(tender, profile_data)
+                        st.markdown(blk_txt)
+                        st.download_button("💾 Download Undertaking (.md)", blk_txt, file_name=f"Undertaking_{safe_id}.md", key=f"blk_dl_{tender.id}")
+                    with tab_chk:
+                        chk_txt = BidPackGenerator.generate_checklist(tender, profile_data)
+                        st.markdown(chk_txt)
+                        st.download_button("💾 Download Checklist (.md)", chk_txt, file_name=f"Checklist_{safe_id}.md", key=f"chk_dl_{tender.id}")
+
+elif selected_view == "📄 Upload & Analyze Custom PDF":
     st.subheader("📄 Upload Any Tender Document (NIT / RFP / BOQ)")
     st.write("Upload a PDF document to run instant automated extraction, eligibility evaluation, and compliance checklist generation.")
 
@@ -281,23 +384,50 @@ with tab_upload:
                     st.caption(f"⚠️ {r}")
 
         st.markdown("---")
-        if st.button("💾 Save to Active Monitored Radar"):
-            new_record = TenderRecord(
-                id=f"UPLOAD/{datetime.now().strftime('%Y%m%d%H%M')}",
-                title=uploaded_file.name.replace(".pdf", ""),
-                organization="Uploaded Document",
-                portal=TenderSource.MANUAL_UPLOAD,
-                due_date=report.submission_deadline or datetime.now().strftime("%Y-%m-%d"),
-                doc_path=str(temp_path),
-                match_score=score,
-                status=BidDecisionStatus.HIGH_MATCH if score >= 75 else BidDecisionStatus.REVIEW_NEEDED,
-                analysis_report=report
-            )
-            db.save_tender(new_record)
-            st.success("Tender saved to radar!")
-            st.rerun()
+        # Check if an existing monitored tender matches this uploaded document
+        all_tenders = db.get_all_tenders()
+        matched_tender = None
+        for t in all_tenders:
+            if (t.doc_url and uploaded_file.name in t.doc_url) or (t.doc_path and uploaded_file.name in t.doc_path):
+                matched_tender = t
+                break
+            if "19796" in uploaded_file.name and "19796" in t.id:
+                matched_tender = t
+                break
 
-with tab_pipeline:
+        if matched_tender:
+            st.success(f"🔗 **Linked to Monitored Portal Tender:** `{matched_tender.id}`")
+            st.write(f"**Authority:** {matched_tender.organization} | **Submission Due:** `{matched_tender.due_date}`")
+            u_col1, u_col2 = st.columns([2, 2])
+            with u_col1:
+                if st.button("💾 Sync & Save Evaluation to Radar", key="sync_radar_btn"):
+                    matched_tender.doc_path = str(temp_path)
+                    matched_tender.analysis_report = report
+                    matched_tender.match_score = score
+                    matched_tender.status = BidDecisionStatus.HIGH_MATCH if score >= 75 else BidDecisionStatus.REVIEW_NEEDED
+                    db.save_tender(matched_tender)
+                    st.success("Tender successfully updated and synced with Active Radar!")
+                    st.rerun()
+            with u_col2:
+                st.info("💡 You can view this bid under **📡 Live Tender Radar** (switch sort to 'Match Score' or search 'Nashik').")
+        else:
+            if st.button("💾 Save to Active Monitored Radar", key="save_new_radar_btn"):
+                new_record = TenderRecord(
+                    id=f"UPLOAD/{datetime.now().strftime('%Y%m%d%H%M')}",
+                    title=uploaded_file.name.replace(".pdf", ""),
+                    organization="Uploaded Document Authority",
+                    portal=TenderSource.MANUAL_UPLOAD,
+                    due_date=report.submission_deadline or datetime.now().strftime("%Y-%m-%d"),
+                    doc_path=str(temp_path),
+                    match_score=score,
+                    status=BidDecisionStatus.HIGH_MATCH if score >= 75 else BidDecisionStatus.REVIEW_NEEDED,
+                    analysis_report=report
+                )
+                db.save_tender(new_record)
+                st.success("Tender saved to radar!")
+                st.rerun()
+
+elif selected_view == "💼 Bid Pipeline & Corrigendums":
     st.subheader("💼 Active Bidding Pipeline")
     pursuing_tenders = [t for t in db.get_all_tenders() if t.status == BidDecisionStatus.PURSUING]
 
@@ -309,10 +439,27 @@ with tab_pipeline:
             st.markdown(f"### 🎯 {pt.title}")
             st.write(f"**Authority:** {pt.organization} | **Est. Value:** ₹{val_cr:.2f} Cr | **Submission Due:** `{pt.due_date}`")
             
-            p_c1, p_c2 = st.columns([2, 1])
+            p_c1, p_c2, p_c3 = st.columns([1.5, 1.3, 1.2])
             with p_c1:
                 st.write(f"**Checklist Readiness:** 6 Mandatory exhibits identified.")
             with p_c2:
+                profile_data = {}
+                try:
+                    with open(COMPANY_PROFILE_PATH, "r", encoding="utf-8") as pf:
+                        profile_data = json.load(pf)
+                except Exception:
+                    pass
+                safe_id = "".join(c for c in pt.id if c.isalnum() or c in ("-", "_"))[:20]
+                zip_data = BidPackGenerator.create_bid_pack_zip(pt, profile_data)
+                st.download_button(
+                    label="📦 Download Bid Pack (.ZIP)",
+                    data=zip_data,
+                    file_name=f"Bid_Pack_{safe_id}.zip",
+                    mime="application/zip",
+                    key=f"pipe_zip_{pt.id}",
+                    use_container_width=True
+                )
+            with p_c3:
                 if st.button(f"Mark as Submitted ✅", key=f"sub_{pt.id}"):
                     db.update_status(pt.id, BidDecisionStatus.SUBMITTED)
                     st.rerun()
@@ -333,7 +480,7 @@ with tab_pipeline:
     else:
         st.write("No active corrigendums recorded.")
 
-with tab_profile:
+elif selected_view == "⚙️ Company Profile Config":
     st.subheader("⚙️ Company Qualification Baseline & Profile")
     st.write("Adjust your company's credentials below. Changing these values allows the agent to recalibrate eligibility scores across all monitored tenders.")
 
@@ -392,8 +539,8 @@ with tab_profile:
             st.success("Company profile saved and all tender match scores recalculated successfully!")
             st.rerun()
 
-# ----------------- TAB 5: LIVE SCRAPING LOGS & AUDIT TRAIL -----------------
-with tab_logs:
+# ----------------- SCREEN 5: LIVE SCRAPING LOGS & AUDIT TRAIL -----------------
+elif selected_view == "📋 Live Scraping Logs & Audit Trail":
     st.subheader("📋 Production Scraping Logs & Portal Audit Trail")
     st.write(
         "Real-time visibility into all network requests, portal probes, HTTP status codes, "
@@ -413,6 +560,55 @@ with tab_logs:
                     db.save_tender(item)
             st.success("Portal scrape cycle executed and logged!")
             st.rerun()
+
+    # Dynamic Portal Registration & URL Management
+    with st.expander("🌐 **Manage & Add More Portal URLs to Monitor**", expanded=False):
+        st.write("Register additional central, state, PSU, or international procurement URLs for autonomous monitoring and network probing.")
+        
+        reg_portals = IndianTenderScraper.get_registered_portals()
+        if reg_portals:
+            st.markdown("##### 📌 Currently Registered Target Portals:")
+            p_cols = st.columns(3)
+            for idx, p in enumerate(reg_portals):
+                col_idx = idx % 3
+                with p_cols[col_idx]:
+                    st.caption(f"**{p.get('name')}** ({p.get('category')})\n\n🔗 `{p.get('url')}`")
+
+        st.markdown("---")
+        st.markdown("##### ➕ Register a New Portal URL:")
+        with st.form("add_portal_form"):
+            ap_c1, ap_c2 = st.columns(2)
+            with ap_c1:
+                new_portal_name = st.text_input("Portal Name", placeholder="e.g. Karnataka KPPP or IOCL Tenders")
+                new_portal_cat = st.selectbox("Category", ["Central Government", "State Government", "Railways & Transport", "Defence & Security", "Public Sector / PSU", "International / Global"])
+            with ap_c2:
+                new_portal_url = st.text_input("Portal Home URL", placeholder="https://kppp.karnataka.gov.in")
+                new_bids_url = st.text_input("Bids Listing URL (Optional)", placeholder="https://kppp.karnataka.gov.in/portal-bids")
+
+            add_btn = st.form_submit_button("🚀 Add Portal & Test Probe Now")
+
+            if add_btn:
+                if not new_portal_name or not new_portal_url:
+                    st.error("Please provide both Portal Name and Target URL.")
+                else:
+                    if not new_portal_url.startswith("http"):
+                        new_portal_url = "https://" + new_portal_url
+                    
+                    IndianTenderScraper.register_portal(
+                        name=new_portal_name,
+                        url=new_portal_url,
+                        category=new_portal_cat,
+                        bids_url=new_bids_url if new_bids_url else new_portal_url
+                    )
+                    
+                    test_scraper = IndianTenderScraper(analyzer=analyzer)
+                    probe_res = test_scraper.probe_portal(new_portal_name, new_portal_url)
+                    
+                    if probe_res.get("success"):
+                        st.success(f"Registered and successfully probed '{new_portal_name}'! (Latency: {probe_res.get('latency_ms', 0):.1f}ms)")
+                    else:
+                        st.warning(f"Registered '{new_portal_name}'. Probe response code: {probe_res.get('status_code')}")
+                    st.rerun()
 
     audit_events = ScrapingAuditLogger.get_recent_audit_events(limit=50)
 
@@ -448,7 +644,7 @@ with tab_logs:
             })
 
         df_logs = pd.DataFrame(table_rows)
-        st.dataframe(df_logs, use_container_width=True, hide_index=True)
+        st.dataframe(df_logs, width="stretch", hide_index=True)
     else:
         st.info("No audit logs recorded yet. Click 'Execute Full Portal Probe & Scrape Cycle' to trigger real portal network queries.")
 

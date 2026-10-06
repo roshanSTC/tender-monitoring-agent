@@ -27,4 +27,5 @@ LOGS_DIR = DATA_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 LOG_FILE_PATH = LOGS_DIR / "tender_agent.log"
 AUDIT_LOG_PATH = LOGS_DIR / "scraping_audit.jsonl"
+PORTALS_CONFIG_PATH = CONFIG_DIR / "monitored_portals.json"
 

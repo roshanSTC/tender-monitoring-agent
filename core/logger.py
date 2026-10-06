@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+import core.win_patch
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, Any, List
