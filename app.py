@@ -9,13 +9,15 @@ from core.database import TenderDatabase
 from core.scraper import IndianTenderScraper
 from core.analyzer import TenderAnalyzer
 from core.document_parser import DocumentParser
-from core.notifier import TenderNotifier
+from core.notifier import TenderNotifier, EmailNotifier
 from core.models import TenderRecord, BidDecisionStatus, TenderSource
 from core.logger import get_agent_logger, ScrapingAuditLogger
 from core.export_engine import ExportEngine
 from core.bid_pack_generator import BidPackGenerator
+from core.watchdog import AutonomousWatchdogService
 
 logger = get_agent_logger("Dashboard")
+watchdog = AutonomousWatchdogService.get_instance()
 
 st.set_page_config(
     page_title="TenderPulse | Autonomous Tender Monitoring Agent",
@@ -85,6 +87,7 @@ with st.sidebar:
             "📡 Live Tender Radar",
             "📄 Upload & Analyze Custom PDF",
             "💼 Bid Pipeline & Corrigendums",
+            "🔔 Email Alerts & Autonomous Watchdog",
             "⚙️ Company Profile Config",
             "📋 Live Scraping Logs & Audit Trail"
         ],
@@ -479,6 +482,144 @@ elif selected_view == "💼 Bid Pipeline & Corrigendums":
                        f"👉 {c.get('description')}")
     else:
         st.write("No active corrigendums recorded.")
+
+elif selected_view == "🔔 Email Alerts & Autonomous Watchdog":
+    st.subheader("🔔 Autonomous Watchdog & Instant Email Alert Pipeline")
+    st.write("Configure the autonomous background polling daemon and enterprise SMTP email notification pipeline.")
+
+    # 1. Watchdog Daemon Status & Controls
+    wd_status = watchdog.get_status()
+    is_active = wd_status["is_running"]
+
+    if is_active:
+        st.success(f"🟢 **Autonomous Watchdog Daemon is ACTIVE** — Monitoring portals every {wd_status['interval_minutes']} minutes in background.")
+    else:
+        st.info("⏸️ **Autonomous Watchdog Daemon is IDLE / STOPPED** — Click 'Start Service' below to begin continuous 24/7 background monitoring.")
+
+    w_col1, w_col2, w_col3, w_col4 = st.columns(4)
+    with w_col1:
+        st.metric("Daemon Status", "Running 🟢" if is_active else "Idle ⏸️")
+    with w_col2:
+        st.metric("Cycles Executed", f"{wd_status['total_cycles']}")
+    with w_col3:
+        st.metric("New Bids Discovered", f"{wd_status['new_tenders_found']}")
+    with w_col4:
+        st.metric("Email Alerts Sent", f"{wd_status['alerts_dispatched']}")
+
+    st.caption(f"**Last Cycle:** {wd_status['last_run_time']} | **Next Scheduled:** {wd_status['next_run_time']} | **Log:** {wd_status['status_message']}")
+
+    btn_w1, btn_w2, btn_w3 = st.columns([1.5, 1.5, 2.0])
+    with btn_w1:
+        if not is_active:
+            if st.button("▶️ Start Watchdog Service", use_container_width=True):
+                watchdog.start()
+                st.toast("Autonomous Watchdog Service started!", icon="🚀")
+                st.rerun()
+        else:
+            st.button("▶️ Service Already Active", disabled=True, use_container_width=True)
+
+    with btn_w2:
+        if is_active:
+            if st.button("⏹️ Stop Watchdog Service", use_container_width=True):
+                watchdog.stop()
+                st.toast("Autonomous Watchdog stopped.", icon="⏹️")
+                st.rerun()
+        else:
+            st.button("⏹️ Service Not Running", disabled=True, use_container_width=True)
+
+    with btn_w3:
+        if st.button("⚡ Run Immediate Probe Cycle Now", use_container_width=True):
+            with st.spinner("Executing immediate portal probe cycle..."):
+                res = watchdog.run_cycle_now()
+                if res.get("success"):
+                    st.success(f"Cycle completed! Discovered {res.get('new_tenders', 0)} new tenders, sent {res.get('alerts_sent', 0)} alerts.")
+                else:
+                    st.error(f"Cycle failed: {res.get('error')}")
+                st.rerun()
+
+    st.markdown("---")
+
+    # 2. Alert Recipient & Dispatch Preferences (Sender details handled statically in code)
+    st.subheader("📬 Alert Recipient & Dispatch Preferences")
+    email_cfg = EmailNotifier.load_config()
+
+    with st.form("email_settings_form"):
+        e_enabled = st.checkbox("Enable Automated Email Notifications", value=email_cfg.get("enabled", False))
+
+        recipients_str = st.text_area(
+            "Recipient Email Addresses (comma-separated)",
+            value=", ".join(email_cfg.get("recipient_emails", [])),
+            help="Enter one or more email addresses that should receive high-priority alerts."
+        )
+
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            min_score = st.slider("Minimum Match Score for Instant Alert (%)", min_value=50, max_value=95, value=int(email_cfg.get("min_alert_score", 75)), step=5)
+        with col_p2:
+            interval_min = st.selectbox(
+                "Watchdog Polling Interval",
+                [30, 60, 120, 180, 360, 720],
+                index=[30, 60, 120, 180, 360, 720].index(email_cfg.get("watchdog_interval_minutes", 180)) if email_cfg.get("watchdog_interval_minutes", 180) in [30, 60, 120, 180, 360, 720] else 3,
+                format_func=lambda x: f"{x} minutes ({x // 60} hours)" if x >= 60 else f"{x} minutes"
+            )
+
+        notify_corri = st.checkbox("Alert on New Corrigendums / Date Extensions", value=email_cfg.get("notify_on_corrigendum", True))
+
+        saved = st.form_submit_button("💾 Save Alert Preferences")
+        if saved:
+            new_recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+            updated_cfg = {
+                "enabled": e_enabled,
+                "recipient_emails": new_recipients,
+                "min_alert_score": int(min_score),
+                "notify_on_corrigendum": notify_corri,
+                "watchdog_interval_minutes": int(interval_min)
+            }
+            if EmailNotifier.save_config(updated_cfg):
+                st.success("Alert preferences saved successfully!")
+                st.rerun()
+            else:
+                st.error("Failed to save email configuration.")
+
+    st.markdown("---")
+
+    # 3. Email Test & Diagnostic Suite
+    st.subheader("🧪 SMTP Diagnostics & Test Suite")
+    st.write("Send test alerts to verify that your email credentials can successfully reach your inbox.")
+
+    d_col1, d_col2 = st.columns(2)
+    with d_col1:
+        st.markdown("#### 📨 Send Verification Test Email")
+        test_email_target = st.text_input("Test Target Email", value=email_cfg.get("recipient_emails", [""])[0] if email_cfg.get("recipient_emails") else "", key="test_email_input")
+        if st.button("📤 Send Test Verification Email", use_container_width=True):
+            if not test_email_target:
+                st.warning("Please enter a target email address.")
+            else:
+                with st.spinner(f"Dispatching test message to {test_email_target}..."):
+                    ok, msg = EmailNotifier.send_test_email(test_email_target.strip())
+                    if ok:
+                        st.success(f"✅ Test email successfully sent! Check your inbox ({test_email_target}).")
+                    else:
+                        st.error(f"❌ Failed to send test email: {msg}")
+
+    with d_col2:
+        st.markdown("#### 🎯 Send Sample Tender Alert Email")
+        st.caption("Sends an authentic HTML tender alert for the **ISP Nashik CToP Machine Tender (84% Match)**.")
+        if st.button("🚀 Send Live Sample Tender Alert", use_container_width=True):
+            if not test_email_target:
+                st.warning("Please enter a target email address on the left.")
+            else:
+                all_t = db.get_all_tenders()
+                sample_t = next((t for t in all_t if "19796" in t.id or "CToP" in t.title), all_t[0] if all_t else None)
+                if sample_t:
+                    with st.spinner("Dispatching formatted HTML tender alert..."):
+                        ok, msg = EmailNotifier.send_tender_alert(sample_t, recipients=[test_email_target.strip()])
+                        if ok:
+                            st.success(f"✅ Sample alert sent! Check your inbox to review the formatted HTML card.")
+                        else:
+                            st.error(f"❌ Dispatch error: {msg}")
+                else:
+                    st.warning("No sample tender found in database.")
 
 elif selected_view == "⚙️ Company Profile Config":
     st.subheader("⚙️ Company Qualification Baseline & Profile")

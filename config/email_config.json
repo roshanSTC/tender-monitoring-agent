@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_user": "roshan.tambe@stcpl.com",
+  "smtp_password": "tkdfqgssvsmdtihp",
+  "use_tls": true,
+  "sender_name": "TenderPulse Procurement Intelligence",
+  "recipient_emails": [
+    "roshan.tambe@stcpl.com"
+  ],
+  "min_alert_score": 75,
+  "notify_on_corrigendum": true,
+  "watchdog_interval_minutes": 180
+}

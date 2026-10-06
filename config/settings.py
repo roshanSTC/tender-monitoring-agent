@@ -28,4 +28,13 @@ LOGS_DIR.mkdir(exist_ok=True)
 LOG_FILE_PATH = LOGS_DIR / "tender_agent.log"
 AUDIT_LOG_PATH = LOGS_DIR / "scraping_audit.jsonl"
 PORTALS_CONFIG_PATH = CONFIG_DIR / "monitored_portals.json"
+EMAIL_CONFIG_PATH = CONFIG_DIR / "email_config.json"
+
+# Static SMTP Sender Gateway Configuration (Handled in code / .env, hidden from UI)
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "TenderPulse Procurement Intelligence")
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "True").lower() in ("true", "1", "yes")
 
