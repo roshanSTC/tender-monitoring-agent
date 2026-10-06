@@ -1,0 +1,47 @@
+{
+  "company_name": "stc",
+  "sectors": [
+    "Information Technology",
+    "Hardware Supply",
+    "Software Development",
+    "Networking & Surveillance",
+    "Cloud Services & Data Center",
+    "Smart City & IoT"
+  ],
+  "keywords": [
+    "software development",
+    "laptops",
+    "servers",
+    "cctv surveillance",
+    "networking equipment",
+    "cloud migration",
+    "system integrator",
+    "annual maintenance contract",
+    "amc",
+    "erp implementation"
+  ],
+  "financials": {
+    "annual_turnover_inr_cr": 25.0,
+    "net_worth_inr_cr": 8.5,
+    "max_emd_capacity_inr_lakhs": 50.0
+  },
+  "certifications": [
+    "ISO 9001:2015",
+    "ISO 27001:2013",
+    "ISO 20000-1",
+    "CMMI Level 3"
+  ],
+  "experience": {
+    "years_in_business": 8,
+    "completed_govt_projects": 14,
+    "largest_single_order_inr_cr": 12.0
+  },
+  "preferred_locations": [
+    "Maharashtra",
+    "Delhi",
+    "Karnataka",
+    "Telangana",
+    "Gujarat",
+    "All India"
+  ]
+}

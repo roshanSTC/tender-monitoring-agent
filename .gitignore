@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables, Secrets & API Keys
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# SQLite Databases & Local Storage
+*.db
+*.sqlite3
+data/tenders.db
+
+# Production Logs & Audit Trails
+*.log
+data/logs/
+*.jsonl
+
+# Uploaded / Downloaded Large Tender Documents
+data/tenders/*
+!data/tenders/.gitkeep
+!data/sample_tender_gem.pdf
+
+# Streamlit Local Cache & Runtime Settings
+.streamlit/
+
+# Temporary / Scratch Test Scripts
+test_write.py
+builder.py
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
