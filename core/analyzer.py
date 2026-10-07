@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from config.settings import COMPANY_PROFILE_PATH
 from core.models import TenderAnalysisReport, EligibilityItem
 from core.logger import get_agent_logger
+from core.document_parser import DocumentParser
 
 logger = get_agent_logger("Analyzer")
 
@@ -109,16 +110,23 @@ class TenderAnalyzer:
         if not penalties_found:
             penalties_found.append("Standard portal terms and conditions applicable.")
 
-        required_docs = [
-            "GST Registration Certificate",
-            "PAN Card & Incorporation Certificate",
-            "Audited Balance Sheets (Last 3 FY) with CA UDIN",
-            "EMD Payment Receipt / Bank Guarantee or MSME Exemption Certificate",
-            "OEM Authorization Form (MAF) if bidding as reseller",
-            "Non-Blacklisting Undertaking on Stamp Paper"
-        ]
-        if found_certs:
-            required_docs.append(f"Valid Certificate Copies ({', '.join(found_certs)})")
+        # Dynamically extract required submissions and forms from the uploaded tender text
+        dynamic_submissions = DocumentParser.extract_required_submissions(tender_text)
+        if dynamic_submissions and len(dynamic_submissions) >= 3:
+            required_docs = dynamic_submissions
+            logger.info(f"Dynamically extracted {len(required_docs)} tender submissions directly from document.")
+        else:
+            required_docs = [
+                "GST Registration Certificate",
+                "PAN Card & Incorporation Certificate",
+                "Audited Balance Sheets (Last 3 FY) with CA UDIN",
+                "EMD Payment Receipt / Bank Guarantee or MSME Exemption Certificate",
+                "OEM Authorization Form (MAF) if bidding as reseller",
+                "Non-Blacklisting Undertaking on Stamp Paper"
+            ]
+            if found_certs:
+                required_docs.append(f"Valid Certificate Copies ({', '.join(found_certs)})")
+            logger.info(f"Using default statutory checklist ({len(required_docs)} exhibits) as fallback.")
 
         items = [turnover_item, emd_item, cert_item, exp_item]
         passed_count = sum(1 for it in items if it.is_eligible)
@@ -161,9 +169,10 @@ class TenderAnalyzer:
         )
 
     def _extract_turnover_req(self, text: str, est_val: Optional[float]) -> float:
-        m = re.search(r"turnover.*?(\d+(?:\.\d+)?)\s*(crore|cr|lakh|lacs)", text, re.IGNORECASE)
+        m = re.search(r"turnover.*?(\d+(?:,\d+)*(?:\.\d+)?)\s*(crore|cr|lakh|lacs)", text, re.IGNORECASE)
         if m:
-            val = float(m.group(1))
+            val_str = m.group(1).replace(",", "")
+            val = float(val_str)
             unit = m.group(2).lower()
             return val if "cr" in unit or "crore" in unit else (val / 100.0)
         if est_val:
@@ -171,7 +180,11 @@ class TenderAnalyzer:
         return 5.0
 
     def _extract_emd(self, text: str) -> Optional[float]:
-        m = re.search(r"emd\s*(?:amount)?[:\s\-₹rs\.]*(\d+(?:,\d+)*(?:\.\d+)?)", text, re.IGNORECASE)
+        m = re.search(
+            r"(?:earnest\s+money\s+deposit|emd|bid\s+security)(?:\s*(?:amount|is|of))?[:\s\-–]*(?:inr|rs\.?|₹)?\s*(\d+(?:,\d+)*(?:\.\d+)?)",
+            text,
+            re.IGNORECASE
+        )
         if m:
             val_str = m.group(1).replace(",", "")
             try:

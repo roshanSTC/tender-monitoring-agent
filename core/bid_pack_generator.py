@@ -140,6 +140,8 @@ Verified at ________________ on this {today_str} that the contents of above affi
             "Non-Blacklisting Undertaking"
         ]
 
+        exhibits_checklist = "\n".join([f"- [ ] **Item {i+1}:** {doc}" for i, doc in enumerate(req_docs)])
+
         return f"""# BID SUBMISSION COMPLIANCE CHECKLIST
 **Tender:** {tender.title}  
 **Authority:** {tender.organization} | **ID:** `{tender.id}`  
@@ -147,29 +149,10 @@ Verified at ________________ on this {today_str} that the contents of above affi
 
 ---
 
-### 📦 PACKET - A: TECHNICAL & FEE ENVELOPE
-*Ensure all items below are scanned, signed with Class-3 Digital Signature Certificate (DSC), and compiled in order:*
+### 📦 MANDATORY TENDER EXHIBITS & FORMS
+*Ensure all items below are compiled, signed, and submitted in compliance with the tender document instructions:*
 
-- [ ] **1. Tender Fee & EMD Proof:** Receipt of online RTGS/NEFT or original Bank Guarantee copy (or valid Udyam MSME certificate).
-- [ ] **2. Bid Submission Cover Letter:** Printed on company letterhead and signed by authorized signatory.
-- [ ] **3. Annexure-I Bidder Profile:** Duly filled and stamped.
-- [ ] **4. Non-Blacklisting Undertaking:** Executed on stamp paper / company letterhead.
-- [ ] **5. Statutory Legal Registrations:**
-      - Copy of GSTIN Certificate
-      - Copy of PAN Card
-      - Certificate of Incorporation (MCA)
-- [ ] **6. Financial Credential Proofs:**
-      - Audited Balance Sheet & Profit & Loss accounts for last 3 financial years.
-      - CA Turnover Certificate with unique Document Identification Number (UDIN).
-      - Net worth certificate as of latest financial year end.
-- [ ] **7. Past Experience Credentials:**
-      - Purchase Orders (POs) / Contracts for similar supplies/services executed in last 3–5 years.
-      - Client Completion & Performance Certificates.
-- [ ] **8. Quality & Standards Certificates:**
-      - ISO 9001:2015, ISO 27001, CMMI copies.
-- [ ] **9. Technical Specifications & OEM Authorization:**
-      - Manufacturer's Authorization Form (MAF) from OEM (if bidding as an authorized partner).
-      - Clause-by-clause compliance statement to technical specifications.
+{exhibits_checklist}
 
 ---
 

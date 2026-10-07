@@ -1,6 +1,7 @@
 import core.win_patch  # Suppress harmless Windows socket WinError 10054
 import streamlit as st
 import os
+import re
 import json
 from datetime import datetime
 import pandas as pd
@@ -351,10 +352,23 @@ elif selected_view == "📄 Upload & Analyze Custom PDF":
         with st.spinner("Extracting text and running intelligent eligibility evaluation..."):
             extracted_text = DocumentParser.extract_text_from_pdf(str(temp_path))
             
+            # Detect organization and submission deadline from document text
+            detected_org = "Procuring Authority"
+            text_head = extracted_text[:12000]
+            if re.search(r"BA\s*NK\s*NOTE\s*PAPER\s*MILL|BNPM", text_head, re.IGNORECASE):
+                detected_org = "Bank Note Paper Mill India Private Limited (BNPM)"
+            elif "INDIA SECURITY PRESS" in text_head.upper():
+                detected_org = "India Security Press (ISP Nashik) / SPMCIL"
+            elif "SPMCIL" in text_head.upper() or "SECURITY PRINTING" in text_head.upper():
+                detected_org = "Security Printing and Minting Corporation of India Limited (SPMCIL)"
+
+            m_due = re.search(r"(?:closing\s+date|submission\s+deadline|last\s+date|due\s+date).*?(\d{2}[\.\/\-]\d{2}[\.\/\-]\d{4})", text_head, re.IGNORECASE)
+            detected_due = m_due.group(1).replace(".", "-").replace("/", "-") if m_due else "Refer to NIT schedule"
+
             report = analyzer.analyze_tender(
                 tender_title=uploaded_file.name.replace(".pdf", ""),
                 tender_text=extracted_text,
-                metadata={"organization": "Uploaded Tender Authority", "due_date": "Extracted from document"}
+                metadata={"organization": detected_org, "due_date": detected_due}
             )
 
         st.markdown("### 📊 Automated Evaluation Results")
@@ -446,7 +460,8 @@ elif selected_view == "💼 Bid Pipeline & Corrigendums":
             
             p_c1, p_c2, p_c3 = st.columns([1.5, 1.3, 1.2])
             with p_c1:
-                st.write(f"**Checklist Readiness:** 6 Mandatory exhibits identified.")
+                num_docs = len(pt.analysis_report.required_documents) if (pt.analysis_report and pt.analysis_report.required_documents) else 6
+                st.write(f"**Checklist Readiness:** {num_docs} Mandatory exhibits identified.")
             with p_c2:
                 profile_data = {}
                 try:
